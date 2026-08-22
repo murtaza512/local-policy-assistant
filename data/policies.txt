@@ -1,0 +1,20 @@
+# Enterprise Refund Policy
+
+Enterprise customers in Germany may request refunds through billing portal.
+Approved Enterprise refunds are processed within 45 days.
+Customers must provide their invoice number.
+
+# Standard Refund Policy
+
+Standard customers may request refunds within 14 days.
+Refund requests must be submitted through the billing portal.
+
+# Premium Cancellation Policy
+
+Premium customers may cancel their subscription within 30 days.
+Cancellation requests can be submitted from the account settings page.
+
+# Employee Vacation Policy
+
+Employees in Germany receive 25 vacation per year.
+Unused vacation days may be carried over according to company policy.
