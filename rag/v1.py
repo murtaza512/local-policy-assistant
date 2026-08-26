@@ -2,9 +2,11 @@ from pathlib import Path
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
 model = SentenceTransformer("all-MiniLM-L6-v2")
 
-test = Path("data/policies.txt").read_text()
+test = (PROJECT_ROOT / "data/policies.txt").read_text()
 
 # print(test)
 

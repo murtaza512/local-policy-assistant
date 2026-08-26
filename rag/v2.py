@@ -3,8 +3,10 @@ from pathlib import Path
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
 print("======= Start INGESTION ===========")
-STORAGE_DIR = Path('storage')
+STORAGE_DIR = PROJECT_ROOT / 'storage'
 STORAGE_DIR.mkdir(exist_ok=True)
 model = SentenceTransformer("all-MiniLM-L6-v2")
 
@@ -106,7 +108,7 @@ def ingestion_pipeline():
     }
 
   print("======== READ From policies ====== 1")
-  data = Path("data/policies.txt").read_text()
+  data = (PROJECT_ROOT / "data/policies.txt").read_text()
 
   print("======== Create chunks from Policies ====== 2")
   chunks = chunk_by_heading(data)

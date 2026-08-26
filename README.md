@@ -14,10 +14,15 @@ A small Retrieval-Augmented Generation (RAG) demo that answers questions about c
 ## Project structure
 
 ```
-rag_project/
+local-policy-assistant/
 ├── data/
-│   └── policies.txt   # Sample company policy document
-├── rag.py             # RAG pipeline (retrieval + generation)
+│   └── policies.txt      # Sample company policy document
+├── rag/
+│   ├── v1.py             # Basic RAG (in-memory retrieval + generation)
+│   ├── v2.py             # RAG with heading-based chunks and file storage
+│   └── v3_chroma.py      # RAG with ChromaDB vector store and metadata filters
+├── storage/              # Cached chunks and embeddings (v2)
+├── chroma_db/            # ChromaDB persistence (v3)
 ├── requirements.txt
 └── README.md
 ```
@@ -43,10 +48,12 @@ On first run, Hugging Face will download:
 
 ## Usage
 
-Run the full pipeline:
+Run a version from the project root:
 
 ```bash
-python rag.py
+python rag/v1.py          # basic in-memory RAG
+python rag/v2.py          # file-backed chunks + embeddings
+python rag/v3_chroma.py   # ChromaDB with metadata filtering
 ```
 
 The script demonstrates retrieval, prompt building, score filtering, and final answers for sample questions such as:
