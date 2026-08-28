@@ -39,6 +39,8 @@ local-policy-assistant/
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+or
+python3 -m pip install -r requirements.txt
 ```
 
 On first run, Hugging Face will download:

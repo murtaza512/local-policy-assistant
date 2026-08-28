@@ -1,8 +1,9 @@
-import json
+import keyword
 import numpy as np
 import chromadb
 from pathlib import Path
 from sentence_transformers import SentenceTransformer
+from rank_bm25 import BM25Okapi
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -131,7 +132,6 @@ print("======= RETREIVAL ===========")
 
 def retrieve(question, k=2, where=None):
   question_embedding = model.encode(question)
-  print("question_embedding",question_embedding.ndim)
 
   query_args = {
     "query_embeddings": [question_embedding.tolist()],
@@ -164,9 +164,105 @@ def retrieve(question, k=2, where=None):
   return retrieved
 
 
+print("=======rank BM25 =======")
+data = (PROJECT_ROOT / "data/policies.txt").read_text()
+chunks = chunk_by_heading(data)
+chunk_ids = [chunk["id"] for chunk in chunks]
+chunk_sections = [chunk["metadata"]["section"] for chunk in chunks]
+print("Cjunks_IDS", chunk_ids, chunk_sections)
+
+documents = [
+  chunk["text"]
+  for chunk in chunks
+]
+
+tokenized_documents = [
+  doc.lower().split()
+  for doc in documents
+]
+
+bm25 = BM25Okapi(tokenized_documents)
+
+def keyword_retrieve(question, k=3):
+  query_tokens = question.lower().split()
+
+  scores = bm25.get_scores(query_tokens)
+
+  ranked_indices = sorted(
+    range(len(scores)),
+    key=lambda i: scores[i],
+    reverse=True
+  )
+
+  results = []
+
+  for index in ranked_indices[:k]:
+    results.append({
+      "id": chunks[index]["id"],
+      "text": chunks[index]["text"],
+      "metadata": chunks[index]["metadata"],
+      "keyword_score": float(scores[index])
+    })
+
+  return results
+
+def reciprocal_rank_fusion(
+  vector_results,
+  keyword_results,
+  constant=60
+):
+  scores = {}
+  items = {}
+
+  for rank, result in enumerate(vector_results, start=1):
+    chunk_id = result["id"]
+
+    scores[chunk_id] = (
+      scores.get(chunk_id, 0)
+      + 1 / (constant + rank)
+    )
+
+    items[chunk_id] = result
+
+  for rank, result in enumerate(keyword_results, start=1):
+    chunk_id = result["id"]
+
+    scores[chunk_id] = (
+      scores.get(chunk_id, 0)
+      + 1 / (constant + rank)
+    )
+
+    items[chunk_id] = result
+
+  ranked_ids = sorted(
+    scores,
+    key=scores.get,
+    reverse=True
+  )
+
+  results = []
+
+  for chunk_id in ranked_ids:
+    result = items[chunk_id].copy()
+    result["rrf_score"] = scores[chunk_id]
+
+    results.append(result)
+
+  return results
+
+def hybrid_retrieve(question, k=3, candidate_k=3):
+  vector_result = retrieve(question, k=candidate_k)
+  keyword_result = keyword_retrieve(question, k=candidate_k)
+
+  fusion = reciprocal_rank_fusion(
+    vector_result,
+    keyword_result
+  )
+
+  return fusion[:k]
+
 print("==========LLM PART=====================")
 
-import torch
 from transformers import pipeline
 
 MIN_SCORE = 0.5
@@ -264,14 +360,147 @@ def answer_question(question, k=2, min_score=0.5, where=None):
     "sources": filtered_results
   }
 
-question = (
-  "How long does an Enterprise refund "
-  "take in Germany?"
-)
+# question = "What is the Enterprise refund policy?"
+# question_1 = "How can corporate customers get their money back?"
+question_1 = "What does policy REF-ENT-004 say?"
 
-print("Enterprice: ", answer_question("What is the refund processing period for Enterprise customers in Germany?", min_score=0.3, where={"plan": {"$eq": "enterprise"}}))
-print("Enterprise 2: ", answer_question("How long does an Enterprise refund take in Germany?"))
-print("question_3: What is company mat", answer_question("What is company's maternity policy?"))
+# print("Enterprice: ", answer_question("What is the refund processing period for Enterprise customers in Germany?", min_score=0.3, where={"plan": {"$eq": "enterprise"}}))
+# print("Enterprise 2: ", answer_question("How long does an Enterprise refund take in Germany?"))
+# print("question_3: What is company mat", answer_question("What is company's maternity policy?"))
 
 # question =  "How long does an Enterprise refund take in Germany?"
-# print(retrieve(question))
+# vector_result = retrieve(question_1, k=3)
+# keyword_result = keyword_retrieve(question_1, k=3)
+
+# print("VECTOR results")
+# for result in vector_result:
+#   print(
+#     result["similarity"],
+#     result["metadata"]["section"]
+#   )
+
+# print("\n KEYWORD results")
+# for result in keyword_result:
+#   print(
+#     round(result["keyword_score"], 4),
+#     result["metadata"]["section"]
+#   )
+
+# print("\n RRF Reciprocal rank fusion")
+
+# hybrid_results = reciprocal_rank_fusion(vector_result, keyword_result)
+
+# for result in hybrid_results:
+#   print(
+#     round(result["rrf_score"], 5),
+#     result["metadata"]["section"]
+#   )
+
+
+print("=========== Evaluate reteriever =========")
+
+evaluation_queries = [
+  {
+    "question": "How long does an Enterprise refund take in Germany?",
+    "relevant_chunks": {"Chunk 1"}
+  },
+  {
+    "question": "What does policy REF-ENT-004 say?",
+    "relevant_chunks": {"Chunk 1"}
+  },
+  {
+    "question": "How many vacation days do employee in Germany get?",
+    "relevant_chunks": {"Chunk 4"}
+  },
+  {
+    "question": "What is the Premium cancellation peroid?",
+    "relevant_chunks": {"Chunk 3"}
+  }
+]
+
+def result_ids(results):
+  return [result["id"] for result in results]
+
+def precision_at_k(case, k):
+  top_k = set(case['retrieved_chunks'][:k])
+  relevant = case["relevant_chunks"]
+
+  found = top_k.intersection(relevant)
+
+  return len(found) / k
+
+def recall_at_k(case, k):
+  top_k = set(case['retrieved_chunks'][:k])
+  relevant = case["relevant_chunks"]
+
+  found = top_k.intersection(relevant)
+
+  return len(found) / len(relevant)
+
+
+def reciprocal_rank(case):
+  relevant = case["relevant_chunks"]
+
+  for rank, chunk in enumerate(
+    case["retrieved_chunks"],
+    start=1
+  ):
+    if chunk in relevant:
+      return 1 / rank
+
+  return 0
+
+def evaluate_retriever(retriever, queries, k=3):
+  test_cases = []
+
+  for case in queries:
+    results = retriever(case["question"], k=k)
+
+    test_cases.append({
+      "question": case["question"],
+      "relevant_chunks": case["relevant_chunks"],
+      "retrieved_chunks": result_ids(results)
+    })
+
+  precision_scores = [
+    precision_at_k(case, k)
+    for case in test_cases
+  ]
+
+  recall_scores = [
+    recall_at_k(case, k=k)
+    for case in test_cases
+  ]
+
+  rr_scores = [
+    reciprocal_rank(case)
+    for case in test_cases
+  ]
+
+  return {
+    "precision_at_k": sum(precision_scores) / len(precision_scores),
+    "recall_at_k": sum(recall_scores) / len(recall_scores),
+    "mrr": sum(rr_scores) / len(rr_scores)
+  }
+
+vector_metrics = evaluate_retriever(
+  retrieve,
+  evaluation_queries,
+  k=3
+)
+
+bm25_metrics = evaluate_retriever(
+  keyword_retrieve,
+  evaluation_queries,
+  k=3
+)
+
+hybrid_metrics = evaluate_retriever(
+  hybrid_retrieve,
+  evaluation_queries,
+  k=3
+)
+
+print("vector_metrics", vector_metrics)
+print("bm25_metrics", bm25_metrics)
+print("hybrid_metrics", hybrid_metrics)

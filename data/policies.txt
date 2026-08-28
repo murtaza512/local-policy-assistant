@@ -1,6 +1,6 @@
 # Enterprise Refund Policy
 
-Enterprise customers in Germany may request refunds through billing portal.
+Enterprise customers or with REF-ENT-004 in Germany may request refunds through billing portal.
 Approved Enterprise refunds are processed within 45 days.
 Customers must provide their invoice number.
 
